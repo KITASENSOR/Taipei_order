@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <title>KITA 訂餐系統 - 智慧自動切換版</title>
+    <style>
+        :root { --navy: #003366; --red: #da291c; --orange: #FF8C00; --gray: #666; }
+        body { font-family: "Microsoft JhengHei", sans-serif; background: #f8f9fa; margin: 0; padding-bottom: 40px; }
+        header { background: white; padding: 15px; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 2px 5px rgba(0,0,0,0.1); position: sticky; top:0; z-index:100; }
+        
+        .scroll-area { 
+            max-height: 480px; 
+            overflow-y: auto; 
+            padding: 10px; 
+            background: #fff; 
+            border-radius: 8px; 
+            border: 1px solid #ddd;
+        }
+
+        .res-banner { background: var(--navy); color: white; padding: 20px; border-radius: 12px; margin: 20px auto; max-width: 900px; text-align: center; font-size: 22px; font-weight: bold; }
+        .main-body { display: flex; flex-wrap: wrap; padding: 0 15px; gap: 20px; max-width: 1000px; margin: 0 auto; }
+        .menu-area { flex: 2; min-width: 350px; }
+        .side-bar { flex: 1; min-width: 300px; background: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 10px rgba(0,0,0,0.05); height: fit-content; }
+        
+        .menu-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 15px; }
+        .food-card { 
+            background: white; border: 1px solid #eee; padding: 12px; border-radius: 10px; 
+            text-align: center; box-shadow: 0 2px 4px rgba(0,0,0,0.05); transition: 0.3s;
+        }
+        .food-card:hover { border-color: var(--orange); }
+        
+        .qty-control { display: flex; align-items: center; justify-content: center; gap: 5px; margin-top: 10px; }
+        .qty-input { width: 55px !important; text-align: center; padding: 5px !important; margin: 0 !important; border: 1px solid #ddd; border-radius: 4px; }
+        .add-btn { 
+            background: var(--orange); color: white; border: none; padding: 6px 12px; 
+            border-radius: 4px; cursor: pointer; font-weight: bold; font-size: 14px;
+        }
+        .add-btn:hover { opacity: 0.8; }
+
+        .order-btn { width: 100%; padding: 15px; background: var(--red); color: white; border: none; border-radius: 8px; font-size: 18px; font-weight: bold; cursor: pointer; margin-top: 10px; transition: 0.3s; }
+        .order-btn:disabled { background: #ccc !important; cursor: not-allowed; }
+        .query-btn { width: 100%; padding: 10px; background: var(--navy); color: white; border: none; border-radius: 8px; cursor: pointer; margin-top: 10px; }
+        
+        #history-panel { margin-top: 20px; padding: 15px; background: #fff; border-radius: 12px; display: none; border: 1px solid #ddd; }
+        .history-item { border-bottom: 1px solid #eee; padding: 10px 0; display: flex; justify-content: space-between; align-items: center; font-size: 14px; }
+        .del-btn { color: #da291c; cursor: pointer; font-weight: bold; border: 1px solid #da291c; padding: 2px 8px; border-radius: 4px; font-size: 12px; }
+        .del-btn:hover { background: #da291c; color: white; }
+        
+        #status-msg { color: var(--red); font-weight: bold; margin-bottom: 10px; display: none; text-align: center; background: #fff0f0; padding: 8px; border-radius: 6px; }
+        input, select { width: 100%; padding: 12px; margin-top: 10px; border: 1px solid #ccc; border-radius: 6px; box-sizing: border-box; }
+    </style>
+</head>
+<body>
+
+<header>
+    <div style="font-size: 22px; font-weight: bold; color: var(--navy);">KITA 訂餐系統</div>
+    <div style="font-weight: bold; color: var(--gray);">📅 <span id="top-date">讀取中...</span></div>
+</header>
+
+<div class="res-banner" id="res-title">正在連線資料庫...</div>
+
+<div class="main-body">
+    <div class="menu-area">
+        <h3 style="margin-bottom:10px;">🍴 選擇餐點與數量</h3>
+        <div class="scroll-area">
+            <div id="menu-container" class="menu-grid"></div>
+        </div>
+        
+        <div id="history-panel">
+            <h3 style="border-bottom: 2px solid var(--navy); padding-bottom: 5px;">📋 您的點餐記錄 (工號：<span id="display-id">--</span>)</h3>
+            <div id="history-list"></div>
+        </div>
+    </div>
+
+    <div class="side-bar">
+        <h3 style="margin: 0; border-bottom: 2px solid var(--red); padding-bottom: 5px;">🛒 我的選餐</h3>
+        <div id="cart-content" style="margin-top:10px; min-height: 50px; font-size: 14px; color: #888;">尚未點餐</div>
+        <div style="font-size: 24px; font-weight: bold; color: var(--red); margin: 15px 0;">總計: $<span id="total-val">0</span></div>
+        
+        <div id="status-msg"></div>
+
+        <label><b>員工工號 (例: 086001)</b></label>
+        <input type="text" id="user-id" placeholder="請輸入工號">
+        
+        <label style="margin-top:10px; display:block;"><b>訂餐樓層</b></label>
+        <select id="user-floor">
+            <option value="3F">3F</option>
+            <option value="5F">5F</option>
+            <option value="6F">6F</option>
+            <option value="1F">1F</option>
+        </select>
+        
+        <button class="order-btn" id="confirm-btn" onclick="sendData()">確認提交訂單</button>
+        <button class="query-btn" onclick="fetchHistory()">🔍 查詢我的訂單 / 刪除</button>
+    </div>
+</div>
+
+<script>
+    // ⚠️ 部署後請務必更新此網址
+    const API = "https://script.google.com/macros/s/AKfycbz-Lu8cBphY8luuLIP5aOlyh5dJlsLfTU7mGM3HMXn4XtHCElrLNqeg3KrrE2jchP55UQ/exec"; 
+    let menuData = [], myCart = {};
+
+    function getTimeStatus() {
+        const now = new Date();
+        const mins = now.getHours() * 60 + now.getMinutes();
+        return {
+            isOverLimit: mins >= (10 * 60 + 10), 
+            isAfterThree: now.getHours() >= 15
+        };
+    }
+
+    window.onload = async () => {
+        await fetchInitialData();
+    }
+
+    async function fetchInitialData() {
+        const status = getTimeStatus();
+        const btn = document.getElementById('confirm-btn');
+        const msg = document.getElementById('status-msg');
+
+        if (status.isOverLimit && !status.isAfterThree) {
+            btn.disabled = true;
+            btn.innerText = "今日點餐已截止";
+            msg.style.display = "block";
+            msg.innerText = "⚠️ 10:10 截止時間已過，15:00 後開放預訂明天。";
+        }
+
+        try {
+            const r = await fetch(API); 
+            const d = await r.json();
+            
+            const datePrefix = d.isTomorrow ? "🔮 預訂明天：" : "📅 今日日期：";
+            document.getElementById('top-date').innerText = datePrefix + d.date; 
+            document.getElementById('res-title').innerText = "餐廳：" + d.restaurant;
+            
+            menuData = d.items || [];
+            renderMenu();
+
+            if (d.isTomorrow) {
+                btn.disabled = false;
+                btn.style.background = "var(--orange)";
+                btn.innerText = "確認提交 (預訂明天)";
+                msg.style.display = "none";
+            }
+        } catch (e) { document.getElementById('res-title').innerText = "❌ 無法連線至後台"; }
+    }
+
+    function renderMenu() {
+        const grid = document.getElementById('menu-container');
+        if (menuData.length === 0) {
+            grid.innerHTML = `<p style="grid-column:1/-1; text-align:center; padding:20px;">此日期尚未排定菜單。</p>`;
+        } else {
+            grid.innerHTML = menuData.map(f => `
+                <div class="food-card">
+                    <b style="font-size:16px;">${f.name}</b><br>
+                    <span style="color:var(--red); font-weight:bold;">$${f.price}</span>
+                    <div class="qty-control">
+                        <input type="number" id="qty-${f.id}" class="qty-input" value="1" min="1">
+                        <button class="add-btn" onclick="handleAddToCart(${f.id})">加入</button>
+                    </div>
+                </div>`).join('');
+        }
+    }
+
+    function handleAddToCart(fid) {
+        const status = getTimeStatus();
+        if (status.isOverLimit && !status.isAfterThree) {
+            return alert("目前為休息時段。請於 15:00 後再來預訂明天餐點。");
+        }
+        
+        const qtyInput = document.getElementById(`qty-${fid}`);
+        const qty = parseInt(qtyInput.value);
+        if(qty <= 0 || isNaN(qty)) return alert("請輸入正確數量");
+        
+        myCart[fid] = (myCart[fid] || 0) + qty;
+        qtyInput.value = 1;
+        refreshCart();
+    }
+    
+    function refreshCart() {
+        let sum = 0;
+        const box = document.getElementById('cart-content');
+        const keys = Object.keys(myCart);
+        if(keys.length === 0) {
+            box.innerHTML = "尚未點餐"; document.getElementById('total-val').innerText = "0";
+            box.style.color = "#888";
+        } else {
+            box.style.color = "#333";
+            box.innerHTML = keys.map(k => {
+                const f = menuData.find(m => m.id == k);
+                sum += f.price * myCart[k];
+                return `<div style="display:flex; justify-content:space-between; margin-bottom:8px; border-bottom: 1px dashed #eee; padding-bottom:4px;">
+                            <span>${f.name} <b>x ${myCart[k]}</b></span>
+                            <span style="color:red; cursor:pointer;" onclick="delete myCart[${k}]; refreshCart();">[移除]</span>
+                        </div>`;
+            }).join('');
+            document.getElementById('total-val').innerText = sum;
+        }
+    }
+
+    async function sendData() {
+        const status = getTimeStatus();
+        if (status.isOverLimit && !status.isAfterThree) return alert("抱歉，今日訂餐已截止！");
+
+        const id = document.getElementById('user-id').value.trim();
+        const fl = document.getElementById('user-floor').value;
+        if(!id || !fl || Object.keys(myCart).length === 0) return alert("請確認填妥工號、樓層並選擇餐點。");
+        
+        const btn = document.getElementById('confirm-btn');
+        const originalText = btn.innerText;
+        btn.disabled = true; btn.innerText = "正在傳送...";
+
+        const cartItems = Object.keys(myCart).map(k => {
+            const f = menuData.find(m => m.id == k);
+            return { name: f.name, qty: myCart[k], price: f.price };
+        });
+
+        try {
+            await fetch(API, { method: 'POST', mode: 'no-cors', body: JSON.stringify({ action: "order", empId: id, floor: fl, cart: cartItems }) });
+            alert("✅ 訂單已成功送出！");
+            myCart = {}; refreshCart();
+            fetchHistory();
+        } catch(e) { alert("系統繁忙或連線錯誤，請重試"); }
+        finally { 
+            btn.disabled = false; 
+            btn.innerText = originalText;
+        }
+    }
+
+    // 核心更新：查詢增加日期與工號顯示
+    async function fetchHistory() {
+        const id = document.getElementById('user-id').value.trim();
+        if(!id) return alert("請先輸入工號以便查詢。");
+        
+        const panel = document.getElementById('history-panel');
+        const listDiv = document.getElementById('history-list');
+        const displayId = document.getElementById('display-id');
+        
+        panel.style.display = 'block';
+        listDiv.innerHTML = "<p style='color:blue;'>正在從資料庫搜尋記錄...</p>";
+        displayId.innerText = id;
+
+        try {
+            // 注意：API 必須回傳包含 date, time, name, qty, row, empId 的 JSON 資料
+            const r = await fetch(`${API}?action=query&empId=${id}`);
+            const data = await r.json();
+            
+            if(data.length === 0) {
+                listDiv.innerHTML = `<p style='color:gray;'>目前查無工號 ${id} 的訂購記錄。</p>`;
+            } else {
+                listDiv.innerHTML = data.map(o => `
+                    <div class="history-item">
+                        <span>
+                            <b style="color:var(--navy);">[${o.date}]</b> 
+                            <small>${o.time}</small> - ${o.name} 
+                            <b style="color:var(--red);">x${o.qty}</b>
+                        </span>
+                        <span class="del-btn" onclick="deleteOrder('${o.row}', '${o.empId}')">刪除</span>
+                    </div>`).join('');
+            }
+        } catch(e) { 
+            listDiv.innerHTML = "<p style='color:red;'>連線逾時或讀取失敗，請確認網路並重試。</p>"; 
+        }
+    }
+
+    async function deleteOrder(row, originalEmpId) {
+        const status = getTimeStatus();
+        if (status.isOverLimit && !status.isAfterThree) {
+            return alert("現在是休息時間，系統已鎖定今日訂單。");
+        }
+        
+        const confirmId = prompt("【安全驗證】請再次輸入工號以確認刪除：");
+        if(!confirmId || parseInt(confirmId) !== parseInt(originalEmpId)) {
+            return alert("工號不符，驗證錯誤！");
+        }
+
+        if(confirm("確定要刪除這筆餐點記錄嗎？")) {
+            try {
+                await fetch(API, { method: 'POST', mode: 'no-cors', body: JSON.stringify({ action: "delete", row: row }) });
+                alert("刪除要求已處理");
+                // 延遲刷新以確保後台已更新
+                setTimeout(fetchHistory, 1000);
+            } catch(e) { alert("刪除失敗"); }
+        }
+    }
+</script>
+</body>
+</html>
